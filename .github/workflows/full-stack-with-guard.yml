@@ -170,17 +170,25 @@ jobs:
           fetch-depth: 2
 
       - name: Run Deployment Guard
+        id: guard
         if: steps.check-key.outputs.key_set == 'true'
         uses: PantevoSystems/deployment-guard-action@v1
         with:
           api-key: ${{ secrets.guard-api-key }}
-          fail-on-blocked: ${{ inputs.guard-fail-on-warn }}
+          # BLOCKED stoppt immer. Die Schwellen kommen aus dem Dashboard.
+          fail-on-blocked: 'true'
           trivy-critical-cves: ${{ needs.trivy.outputs.critical_count || '0' }}
           trivy-high-cves: ${{ needs.trivy.outputs.high_count || '0' }}
           semgrep-findings: ${{ needs.semgrep.outputs.total_count || '0' }}
           semgrep-high-severity: ${{ needs.semgrep.outputs.high_count || '0' }}
           checkov-failed-checks: ${{ needs.checkov.outputs.total_count || '0' }}
           checkov-critical-failures: ${{ needs.checkov.outputs.critical_count || '0' }}
+
+      - name: Fail on WARN (optional)
+        if: steps.check-key.outputs.key_set == 'true' && inputs.guard-fail-on-warn && steps.guard.outputs.status == 'WARN'
+        run: |
+          echo "⚠️  Deployment Guard: WARN and guard-fail-on-warn is enabled."
+          exit 1
 
 
   summary:
