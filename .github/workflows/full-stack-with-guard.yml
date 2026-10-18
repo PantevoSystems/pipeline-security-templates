@@ -149,6 +149,10 @@ jobs:
     if: always() && inputs.skip-guard == false
     permissions:
       contents: read
+    outputs:
+      score: ${{ steps.guard.outputs.score }}
+      status: ${{ steps.guard.outputs.status }}
+      verdict: ${{ steps.guard.outputs.verdict }}
     steps:
       - name: Check API key is set
         id: check-key
@@ -211,8 +215,8 @@ jobs:
           echo "Findings detail: see **Security tab**." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Deployment risk" >> $GITHUB_STEP_SUMMARY
-          echo "| Score | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| Deployment Guard | ${{ needs.deployment-guard.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Score | Verdict | Status | Job |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| ${{ needs.deployment-guard.outputs.score || '–' }} | ${{ needs.deployment-guard.outputs.verdict || '–' }} | ${{ needs.deployment-guard.outputs.status || '–' }} | ${{ needs.deployment-guard.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Risk dashboard: https://www.pantevosystems.com/dashboard" >> $GITHUB_STEP_SUMMARY
