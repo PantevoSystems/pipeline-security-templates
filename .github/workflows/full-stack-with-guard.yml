@@ -9,7 +9,11 @@ name: Full Security Stack + Deployment Guard
 #
 # jobs:
 #   security:
-#     uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.0
+#     uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.3
+#     permissions:
+#       contents: read
+#       security-events: write
+#       actions: read
 #     secrets:
 #       guard-api-key: ${{ secrets.GUARD_API_KEY }}
 #
@@ -58,9 +62,26 @@ on:
         type: string
         default: 'all'
 
+      # Semgrep paths (newline-separated)
+      semgrep-paths-exclude:
+        description: 'Paths to exclude from Semgrep (newline-separated)'
+        required: false
+        type: string
+        default: ''
+
       # Deployment Guard
       guard-fail-on-warn:
         description: 'Fail the build on WARN verdict (default: only on BLOCKED)'
+        required: false
+        type: boolean
+        default: false
+      guard-fail-open:
+        description: 'Let the deployment continue (with a warning) when the Deployment Guard API is unreachable, rate-limited (429), returns 5xx or an invalid response. Default: false (fail closed).'
+        required: false
+        type: boolean
+        default: false
+      allow-missing-key:
+        description: 'Only warn (instead of failing) when the guard-api-key secret is not set. Default: false.'
         required: false
         type: boolean
         default: false
@@ -91,23 +112,31 @@ on:
 jobs:
   detect:
     runs-on: ubuntu-latest
+    # Nur Lesezugriff für den Checkout (private Repos) — sonst keine Rechte
+    permissions:
+      contents: read
     outputs:
       has_dockerfile: ${{ steps.check.outputs.has_dockerfile }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - id: check
+        env:
+          TRIVY_DOCKERFILE: ${{ inputs.trivy-dockerfile }}
+          TRIVY_IMAGE: ${{ inputs.trivy-image }}
         run: |
-          if [ -f "${{ inputs.trivy-dockerfile }}" ] || [ -n "${{ inputs.trivy-image }}" ]; then
-            echo "has_dockerfile=true" >> $GITHUB_OUTPUT
+          if [ -f "$TRIVY_DOCKERFILE" ] || [ -n "$TRIVY_IMAGE" ]; then
+            echo "has_dockerfile=true" >> "$GITHUB_OUTPUT"
           else
-            echo "has_dockerfile=false" >> $GITHUB_OUTPUT
+            echo "has_dockerfile=false" >> "$GITHUB_OUTPUT"
             echo "ℹ️  No Dockerfile or image specified — skipping Trivy container scan."
           fi
 
   trivy:
     needs: detect
     if: inputs.skip-trivy == false && needs.detect.outputs.has_dockerfile == 'true'
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/trivy-container-scan.yml@v1.2.0
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/trivy-container-scan.yml@v1.2.3 # eigenes Repo, Release-Tag
     permissions:
       contents: read
       security-events: write
@@ -120,7 +149,7 @@ jobs:
 
   semgrep:
     if: inputs.skip-semgrep == false
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/semgrep-sast.yml@v1.2.0
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/semgrep-sast.yml@v1.2.3 # eigenes Repo, Release-Tag
     permissions:
       contents: read
       security-events: write
@@ -128,11 +157,12 @@ jobs:
     with:
       config: ${{ inputs.semgrep-config }}
       severity: ${{ inputs.semgrep-severity }}
+      paths-exclude: ${{ inputs.semgrep-paths-exclude }}
       fail-on-issues: ${{ inputs.fail-on-issues }}
 
   checkov:
     if: inputs.skip-checkov == false
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/checkov-iac.yml@v1.2.0
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/checkov-iac.yml@v1.2.3 # eigenes Repo, Release-Tag
     permissions:
       contents: read
       security-events: write
@@ -145,8 +175,8 @@ jobs:
   deployment-guard:
     name: Deployment Guard Risk Score
     runs-on: ubuntu-latest
-    needs: [trivy, semgrep, checkov]
-    if: always() && inputs.skip-guard == false
+    needs: [detect, trivy, semgrep, checkov]
+    if: ${{ !cancelled() && inputs.skip-guard == false }}
     permissions:
       contents: read
     outputs:
@@ -158,29 +188,62 @@ jobs:
         id: check-key
         env:
           GUARD_API_KEY: ${{ secrets.guard-api-key }}
+          ALLOW_MISSING_KEY: ${{ inputs.allow-missing-key }}
         run: |
           if [ -z "$GUARD_API_KEY" ]; then
-            echo "⚠️  GUARD_API_KEY secret not set — skipping Deployment Guard."
             echo "Get a free API key: https://www.pantevosystems.com/signup"
-            echo "key_set=false" >> $GITHUB_OUTPUT
-          else
-            echo "key_set=true" >> $GITHUB_OUTPUT
+            if [ "$ALLOW_MISSING_KEY" = "true" ]; then
+              echo "⚠️  guard-api-key secret not set — skipping Deployment Guard (allow-missing-key: true)."
+              echo "key_set=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "❌ guard-api-key secret not set — failing. Pass the secret guard-api-key (e.g. from secrets.GUARD_API_KEY) or set allow-missing-key: true."
+            exit 1
           fi
+          echo "key_set=true" >> "$GITHUB_OUTPUT"
+
+      # Kein Score mit 0 Findings, wenn ein Scanner nicht sauber durchgelaufen ist
+      - name: Verify scanner results
+        if: steps.check-key.outputs.key_set == 'true'
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+          TRIVY_RESULT: ${{ needs.trivy.result }}
+          SEMGREP_RESULT: ${{ needs.semgrep.result }}
+          CHECKOV_RESULT: ${{ needs.checkov.result }}
+        run: |
+          FAILED=""
+          for pair in "detect=$DETECT_RESULT" "trivy=$TRIVY_RESULT" "semgrep=$SEMGREP_RESULT" "checkov=$CHECKOV_RESULT"; do
+            name="${pair%%=*}"
+            result="${pair#*=}"
+            case "$result" in
+              success|skipped) ;;
+              *) FAILED="$FAILED $name($result)" ;;
+            esac
+          done
+          if [ -n "$FAILED" ]; then
+            echo "❌ Scanner did not complete successfully:$FAILED — refusing to score with 0 findings."
+            echo "   (With fail-on-issues: true a scanner also fails when it reports findings — see the scanner job.)"
+            exit 1
+          fi
+          echo "✅ All non-skipped scanners completed successfully."
 
       - name: Checkout
         if: steps.check-key.outputs.key_set == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          fetch-depth: 2
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Run Deployment Guard
         id: guard
         if: steps.check-key.outputs.key_set == 'true'
+        # Eigene Action — bewusst auf den Major-Tag @v1 gepinnt (nicht auf einen SHA)
         uses: PantevoSystems/deployment-guard-action@v1
         with:
           api-key: ${{ secrets.guard-api-key }}
           # BLOCKED stoppt immer. Die Schwellen kommen aus dem Dashboard.
           fail-on-blocked: 'true'
+          fail-open: ${{ inputs.guard-fail-open }}
           trivy-critical-cves: ${{ needs.trivy.outputs.critical_count || '0' }}
           trivy-high-cves: ${{ needs.trivy.outputs.high_count || '0' }}
           semgrep-findings: ${{ needs.semgrep.outputs.total_count || '0' }}
@@ -200,23 +263,37 @@ jobs:
     runs-on: ubuntu-latest
     needs: [trivy, semgrep, checkov, deployment-guard]
     if: always()
+    permissions: {}
     steps:
       - name: Aggregate results
+        # Werte nur über env — keine Expression-Interpolation im Skript
+        env:
+          TRIVY_RESULT: ${{ needs.trivy.result }}
+          SEMGREP_RESULT: ${{ needs.semgrep.result }}
+          CHECKOV_RESULT: ${{ needs.checkov.result }}
+          GUARD_RESULT: ${{ needs.deployment-guard.result }}
+          GUARD_SCORE: ${{ needs.deployment-guard.outputs.score }}
+          GUARD_VERDICT: ${{ needs.deployment-guard.outputs.verdict }}
+          GUARD_STATUS: ${{ needs.deployment-guard.outputs.status }}
         run: |
-          echo "## 🛡️ Security Stack + Deployment Guard" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Detailed findings" >> $GITHUB_STEP_SUMMARY
-          echo "| Tool | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| Trivy (Container CVEs) | ${{ needs.trivy.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Semgrep (SAST) | ${{ needs.semgrep.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Checkov (IaC) | ${{ needs.checkov.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Findings detail: see **Security tab**." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment risk" >> $GITHUB_STEP_SUMMARY
-          echo "| Score | Verdict | Status | Job |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| ${{ needs.deployment-guard.outputs.score || '–' }} | ${{ needs.deployment-guard.outputs.verdict || '–' }} | ${{ needs.deployment-guard.outputs.status || '–' }} | ${{ needs.deployment-guard.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Risk dashboard: https://www.pantevosystems.com/dashboard" >> $GITHUB_STEP_SUMMARY
+          # Tabellenzellen entschärfen (keine Zeilenumbrüche, Pipes, HTML)
+          cell() { printf '%s' "${1:-–}" | tr -d '\r\n|<>`' | cut -c1-80; }
+          {
+            echo "## 🛡️ Security Stack + Deployment Guard"
+            echo ""
+            echo "### Detailed findings"
+            echo "| Tool | Status |"
+            echo "|---|---|"
+            echo "| Trivy (Container CVEs) | $(cell "$TRIVY_RESULT") |"
+            echo "| Semgrep (SAST) | $(cell "$SEMGREP_RESULT") |"
+            echo "| Checkov (IaC) | $(cell "$CHECKOV_RESULT") |"
+            echo ""
+            echo "Findings detail: see **Security tab**."
+            echo ""
+            echo "### Deployment risk"
+            echo "| Score | Verdict | Status | Job |"
+            echo "|---|---|---|---|"
+            echo "| $(cell "$GUARD_SCORE") | $(cell "$GUARD_VERDICT") | $(cell "$GUARD_STATUS") | $(cell "$GUARD_RESULT") |"
+            echo ""
+            echo "Risk dashboard: https://www.pantevosystems.com/dashboard"
+          } >> "$GITHUB_STEP_SUMMARY"

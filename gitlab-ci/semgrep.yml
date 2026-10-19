@@ -2,8 +2,8 @@
 #
 # Usage in your .gitlab-ci.yml:
 #
-#   include:
-#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/semgrep.yml'
+#   include:   # pinned to release tag v1.2.3 (next release) — never main
+#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/semgrep.yml'
 #
 #   semgrep_scan:
 #     extends: .semgrep_template
@@ -18,24 +18,26 @@
     SEMGREP_PATHS_EXCLUDE: ""    # Newline-separated, e.g. "tests/\nvendor/"
   script:
     - |
-      ARGS="scan --severity=$SEMGREP_SEVERITY --gitlab-sast --output gl-sast-report.json"
-
-      # Add path excludes
+      # Path excludes als Positionsparameter sammeln — Here-Doc statt Pipe,
+      # damit die Schleife nicht in einer Subshell läuft (sonst bleibt die Liste leer)
+      set --
       if [ -n "$SEMGREP_PATHS_EXCLUDE" ]; then
-        echo "$SEMGREP_PATHS_EXCLUDE" | while IFS= read -r line; do
+        while IFS= read -r line; do
           [ -z "$line" ] && continue
-          ARGS="$ARGS --exclude=$line"
-        done
+          set -- "$@" "--exclude=$line"
+        done <<EOF_EXCLUDE
+      $SEMGREP_PATHS_EXCLUDE
+      EOF_EXCLUDE
       fi
 
       # Run scan with table output for logs
-      semgrep scan --severity=$SEMGREP_SEVERITY || true
+      semgrep scan --severity="$SEMGREP_SEVERITY" "$@" || true
 
       # Run again with GitLab SAST format
       if [ "$SEMGREP_FAIL_ON_ISSUES" = "true" ]; then
-        semgrep $ARGS --error
+        semgrep scan --severity="$SEMGREP_SEVERITY" --gitlab-sast --output gl-sast-report.json "$@" --error
       else
-        semgrep $ARGS
+        semgrep scan --severity="$SEMGREP_SEVERITY" --gitlab-sast --output gl-sast-report.json "$@"
       fi
   artifacts:
     when: always

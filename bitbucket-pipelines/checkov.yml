@@ -10,7 +10,7 @@
 #   default:
 #     - step:
 #         name: Checkov IaC Scan
-#         image: bridgecrew/checkov:latest
+#         image: bridgecrew/checkov:3.3.29   # feste Version statt :latest
 #         script:
 #           - checkov --directory . --framework all --download-external-modules true
 #
@@ -22,7 +22,7 @@
 #   default:
 #     - step:
 #         name: Checkov IaC Scan
-#         image: bridgecrew/checkov:latest
+#         image: bridgecrew/checkov:3.3.29   # feste Version statt :latest
 #         script:
 #           - |
 #             ARGS="--directory ${CHECKOV_DIRECTORY:-.} --framework ${CHECKOV_FRAMEWORK:-all} --download-external-modules true"
@@ -47,7 +47,7 @@ definitions:
   steps:
     - step: &checkov-scan
         name: Checkov IaC Scan
-        image: bridgecrew/checkov:latest
+        image: bridgecrew/checkov:3.3.29   # feste Version statt :latest
         script:
           - |
             ARGS="--directory ${CHECKOV_DIRECTORY:-.} --framework ${CHECKOV_FRAMEWORK:-all} --download-external-modules true"

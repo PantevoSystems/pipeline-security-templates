@@ -54,7 +54,7 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Run Semgrep scan
         id: scan
@@ -67,27 +67,36 @@ jobs:
         run: |
           set +e
 
-          EXTRA_ARGS=""
+          # Extra-Argumente als Positionsparameter sammeln: Here-Doc statt Pipe,
+          # damit die Schleife in der aktuellen Shell läuft (kein Subshell-Verlust)
+          # und Pfade mit Leerzeichen ein Argument bleiben.
+          set --
 
           if [ -n "$PATHS_INCLUDE" ]; then
-            echo "$PATHS_INCLUDE" | while IFS= read -r line; do
+            while IFS= read -r line; do
               [ -z "$line" ] && continue
-              EXTRA_ARGS="$EXTRA_ARGS --include=$line"
-            done
+              set -- "$@" "--include=$line"
+            done <<EOF_INCLUDE
+          $PATHS_INCLUDE
+          EOF_INCLUDE
           fi
 
           if [ -n "$PATHS_EXCLUDE" ]; then
-            echo "$PATHS_EXCLUDE" | while IFS= read -r line; do
+            while IFS= read -r line; do
               [ -z "$line" ] && continue
-              EXTRA_ARGS="$EXTRA_ARGS --exclude=$line"
-            done
+              set -- "$@" "--exclude=$line"
+            done <<EOF_EXCLUDE
+          $PATHS_EXCLUDE
+          EOF_EXCLUDE
           fi
+
+          echo "Semgrep extra args: $*"
 
           semgrep scan \
             --sarif \
             --output=semgrep-results.sarif \
             --severity="$SEVERITY" \
-            $EXTRA_ARGS
+            "$@"
           SCAN_EXIT=$?
 
           if [ ! -f semgrep-results.sarif ]; then
@@ -99,7 +108,7 @@ jobs:
           exit 0
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
         if: always()
         continue-on-error: true 
         with:
@@ -136,6 +145,8 @@ jobs:
 
       - name: Fail build if requested
         if: inputs.fail-on-issues && steps.scan.outputs.scan_exit != '0'
+        env:
+          SEVERITY: ${{ inputs.severity }}
         run: |
-          echo "Semgrep found issues at severity ${{ inputs.severity }} or higher."
+          echo "Semgrep found issues at severity $SEVERITY or higher."
           exit 1

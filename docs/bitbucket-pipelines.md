@@ -74,15 +74,19 @@ For most users: **prefer Trivy filesystem scanning** (`trivy fs`) over container
 
 ### "Could not find previous commit" (Deployment Guard)
 
-The default Bitbucket clone is shallow. The template uses `clone.depth: 2` to get one extra commit:
+The default Bitbucket clone is shallow. The guard step uses a full clone and diffs against `HEAD~1` (Bitbucket provides no "before" SHA; override with the variable `GUARD_DIFF_BASE`):
 
 ```yaml
 - step:
     clone:
-      depth: 2
+      depth: full
 ```
 
-If you need deeper history, increase `depth` or use `depth: full`.
+If the base commit is missing, the step fails instead of scoring an empty diff.
+
+Guard variables: `GUARD_FAIL_ON_WARN` (default `false`), `GUARD_FAIL_OPEN` (default `false` — API unreachable / 429 / 5xx / invalid response fail the step; invalid key and rejected requests always fail), `GUARD_ALLOW_MISSING_KEY` (default `false` — a missing `GUARD_API_KEY` fails the step).
+
+Sent to the API: repository name, branch, commit SHA, lines added / removed, files changed. No source code, no file contents, no file paths.
 
 ### Pipeline minutes
 

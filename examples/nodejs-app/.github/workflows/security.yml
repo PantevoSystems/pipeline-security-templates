@@ -7,28 +7,41 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Pin auf ein Release-Tag (v1.2.3 = nächstes Release) — in Produktion nie den main-Branch referenzieren.
 jobs:
   # Option 1 — Single tool (uncomment to use)
   #
   # trivy:
-  #   uses: PantevoSystems/pipeline-security-templates/.github/workflows/trivy-container-scan.yml@main
+  #   uses: PantevoSystems/pipeline-security-templates/.github/workflows/trivy-container-scan.yml@v1.2.3
   #   with:
   #     dockerfile: examples/nodejs-app/Dockerfile
 
   # Option 2 — Full stack (Trivy + Semgrep + Checkov in parallel)
   security:
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack.yml@main
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack.yml@v1.2.3
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     with:
       trivy-dockerfile: examples/nodejs-app/Dockerfile
       semgrep-paths-exclude: |
         node_modules/
       checkov-directory: examples/nodejs-app/k8s
       fail-on-issues: false   # Demo intentionally has findings — don't break the pipeline
+      skip-guard: true        # Deployment Guard needs GUARD_API_KEY — see Option 3
 
   # Option 3 — Full stack + Deployment Guard (requires GUARD_API_KEY secret)
   #
   # security-with-guard:
-  #   uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@main
+  #   uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.3
+  #   permissions:
+  #     contents: read
+  #     security-events: write
+  #     actions: read
   #   with:
   #     trivy-dockerfile: examples/nodejs-app/Dockerfile
   #     fail-on-issues: false

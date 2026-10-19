@@ -2,8 +2,8 @@
 #
 # Usage in your .gitlab-ci.yml:
 #
-#   include:
-#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/checkov.yml'
+#   include:   # pinned to release tag v1.2.3 (next release) — never main
+#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/checkov.yml'
 #
 #   checkov_scan:
 #     extends: .checkov_template
@@ -11,7 +11,7 @@
 .checkov_template:
   stage: test
   image:
-    name: bridgecrew/checkov:latest
+    name: bridgecrew/checkov:3.3.29   # feste Version statt :latest
     entrypoint: [""]
   variables:
     CHECKOV_DIRECTORY: "."

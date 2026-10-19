@@ -11,7 +11,7 @@ Unlike GitHub Actions' Reusable Workflows, GitLab uses an `include` + `extends` 
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/trivy.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/trivy.yml'
 
 stages:
   - test
@@ -23,12 +23,14 @@ trivy_scan:
 
 That's it. Push and watch the pipeline.
 
+> 📌 Includes are pinned to a release tag (`v1.2.3`). Don't include from `main` in production — a change on `main` would run in your pipeline without review.
+
 ### Full stack — all three tools
 
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/full-stack.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/full-stack.yml'
 
 stages:
   - security
@@ -53,10 +55,7 @@ All three jobs run in parallel within the `security` stage.
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/full-stack-with-guard.yml'
-
-variables:
-  GIT_DEPTH: 2   # Required for Deployment Guard diff analysis
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/full-stack-with-guard.yml'
 
 stages:
   - security
@@ -80,6 +79,17 @@ deployment_guard:
 ```
 
 Set `GUARD_API_KEY` in your repo's CI/CD variables (Settings → CI/CD → Variables → Add variable, masked: yes).
+
+The `.deployment_guard_template` job sets `GIT_DEPTH: "0"` (full clone) itself and diffs against `CI_MERGE_REQUEST_DIFF_BASE_SHA` (merge requests), `CI_COMMIT_BEFORE_SHA` (pushes) or `HEAD~1` (fallback). Override with `GUARD_DIFF_BASE`.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `GUARD_FAIL_ON_WARN` | `false` | Also fail on WARN |
+| `GUARD_FAIL_OPEN` | `false` | `true`: API unreachable / 429 / 5xx / invalid response only warns. Default: the job fails (fail-closed). Invalid key (401/403) and rejected requests (400/422) always fail. |
+| `GUARD_ALLOW_MISSING_KEY` | `false` | `true`: skip instead of fail when `GUARD_API_KEY` is not set |
+| `GUARD_API_URL` | `https://api.pantevosystems.com` | API base URL (https only) |
+
+Sent to the API: project path, branch, commit SHA, lines added / removed, files changed. No source code, no file contents, no file paths.
 
 ## Customization
 
@@ -141,14 +151,14 @@ trivy_scan:
 
 ### "Could not find previous commit" (Deployment Guard)
 
-The Guard requires the previous commit to compute diff. Set `GIT_DEPTH: 2`:
+The Guard requires the base commit to compute the diff. The template sets `GIT_DEPTH: "0"` (full clone); if you override `GIT_DEPTH` for the job or globally, keep it at `0`:
 
 ```yaml
 variables:
-  GIT_DEPTH: 2
+  GIT_DEPTH: "0"
 ```
 
-Or globally in your pipeline.
+If the base commit is missing, the job fails instead of scoring an empty diff.
 
 ### "Reports not appearing in Security Dashboard"
 

@@ -34,7 +34,7 @@ pipelines:
 
         - step:
             name: Checkov IaC Scan
-            image: bridgecrew/checkov:latest
+            image: bridgecrew/checkov:3.3.29   # feste Version statt :latest
             script:
               - |
                 checkov \
@@ -63,6 +63,6 @@ pipelines:
 
           - step:
               name: Checkov IaC Scan (PR)
-              image: bridgecrew/checkov:latest
+              image: bridgecrew/checkov:3.3.29   # feste Version statt :latest
               script:
                 - checkov --directory . --framework all --download-external-modules true

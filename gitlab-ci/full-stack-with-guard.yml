@@ -4,8 +4,8 @@
 #
 # Usage in your .gitlab-ci.yml:
 #
-#   include:
-#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/full-stack-with-guard.yml'
+#   include:   # pinned to release tag v1.2.3 (next release) — never main
+#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/full-stack-with-guard.yml'
 #
 #   stages:
 #     - security
@@ -28,62 +28,248 @@
 #     stage: risk
 #
 # Required secret variable in GitLab:
-#   GUARD_API_KEY (Settings → CI/CD → Variables)
+#   GUARD_API_KEY (Settings → CI/CD → Variables, masked)
+#
+# Optional variables:
+#   GUARD_FAIL_ON_WARN=true       — also fail on WARN
+#   GUARD_FAIL_OPEN=true          — let the pipeline continue when the API is unreachable / 429 / 5xx /
+#                                   returns an invalid response (default: fail closed)
+#   GUARD_ALLOW_MISSING_KEY=true  — skip (instead of fail) when GUARD_API_KEY is not set
+#   GUARD_DIFF_BASE=<sha>         — override the diff base
+#
+# Diff base: CI_MERGE_REQUEST_DIFF_BASE_SHA (MR) → CI_COMMIT_BEFORE_SHA (push) → HEAD~1.
+# The guard job sets GIT_DEPTH: 0 (full clone) so the base commit is available.
+#
+# Sent to the API: repo path, branch, commit SHA, lines added/removed, files changed.
+# No source code, no file contents, no file paths.
+#
+# The includes are pinned to the release tag v1.2.3 (not main). Pin to a tag you have reviewed.
 
+# Pinned to release tag v1.2.3 (next release) instead of main — the tag must exist before use.
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/trivy.yml'
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/semgrep.yml'
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/main/gitlab-ci/checkov.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/trivy.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/semgrep.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/checkov.yml'
 
 .deployment_guard_template:
   stage: risk
-  image: curlimages/curl:8.10.0
+  image: python:3.12.13-slim   # feste Version; Digest konnte nicht aufgelöst werden — bei Bedarf @sha256:… ergänzen
   variables:
-    GUARD_API_URL: "https://api.pantevosystems.com/analyze"
+    GIT_DEPTH: "0"
+    GUARD_API_URL: "https://api.pantevosystems.com"
     GUARD_FAIL_ON_WARN: "false"
+    GUARD_FAIL_OPEN: "false"
+    GUARD_ALLOW_MISSING_KEY: "false"
   before_script:
-    - |
-      if [ -z "$GUARD_API_KEY" ]; then
-        echo "⚠️  GUARD_API_KEY variable not set — skipping Deployment Guard."
-        echo "Get a free API key: https://www.pantevosystems.com/signup"
-        exit 0
-      fi
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git > /dev/null
   script:
     - |
-      # Calculate diff stats
-      git fetch --depth 2 origin "$CI_COMMIT_REF_NAME" 2>/dev/null || true
-      DIFF_LINES_ADDED=$(git diff HEAD~1 HEAD --stat | tail -1 | awk '{print $4}' || echo "0")
-      DIFF_LINES_REMOVED=$(git diff HEAD~1 HEAD --stat | tail -1 | awk '{print $6}' || echo "0")
-      DIFF_FILES_CHANGED=$(git diff HEAD~1 HEAD --name-only | wc -l || echo "0")
+      GUARD_FAIL_ON_WARN="${GUARD_FAIL_ON_WARN:-false}"
 
-      # Send to Deployment Guard
-      RESPONSE=$(curl -s -X POST "$GUARD_API_URL" \
-        -H "Content-Type: application/json" \
-        -H "X-API-Key: $GUARD_API_KEY" \
-        -d "{
-          \"repo\": \"$CI_PROJECT_PATH\",
-          \"branch\": \"$CI_COMMIT_REF_NAME\",
-          \"commit_sha\": \"$CI_COMMIT_SHA\",
-          \"diff_lines_added\": ${DIFF_LINES_ADDED:-0},
-          \"diff_lines_removed\": ${DIFF_LINES_REMOVED:-0},
-          \"diff_files_changed\": ${DIFF_FILES_CHANGED:-0}
-        }")
+      if [ -z "${GUARD_API_KEY:-}" ]; then
+        if [ "${GUARD_ALLOW_MISSING_KEY:-false}" = "true" ]; then
+          echo "⚠️  GUARD_API_KEY not set — skipping Deployment Guard (GUARD_ALLOW_MISSING_KEY=true)."
+          echo "Get a free API key: https://www.pantevosystems.com/signup"
+          exit 0
+        fi
+        echo "❌ GUARD_API_KEY not set — failing. Set GUARD_ALLOW_MISSING_KEY=true to skip instead."
+        echo "Get a free API key: https://www.pantevosystems.com/signup"
+        exit 1
+      fi
 
-      # Parse score and verdict
-      SCORE=$(echo "$RESPONSE" | grep -o '"score":[0-9]*' | cut -d':' -f2)
-      VERDICT=$(echo "$RESPONSE" | grep -o '"verdict":"[^"]*"' | cut -d'"' -f4)
-      STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+      git config --global --add safe.directory "$(pwd)" 2>/dev/null || true
+      DG_RESULT=$(mktemp)
+      export DG_RESULT
 
-      echo "═══════════════════════════════════════"
-      echo "🛡️  Deployment Guard"
-      echo "═══════════════════════════════════════"
-      echo "Score:   $SCORE/100"
-      echo "Verdict: $VERDICT"
-      echo "Status:  $STATUS"
-      echo "═══════════════════════════════════════"
-      echo "Dashboard: https://www.pantevosystems.com/dashboard"
+      # Diff, Payload (json.dumps), API Call und Parsing (json) in Python
+      RC=0
+      python3 - <<'PY' || RC=$?
+      import json, os, re, subprocess, sys, urllib.error, urllib.request
 
-      # Exit logic
+      EXTENDED = False   # True: zusätzlich K8s-/Helm-Zähler senden
+      EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+      E = os.environ.get
+      FAIL_OPEN = E("GUARD_FAIL_OPEN", "false") == "true"
+
+
+      def out(msg):
+          print(msg, flush=True)
+
+
+      def fatal(msg):
+          out("❌ Deployment Guard: " + msg)
+          sys.exit(1)
+
+
+      def soft(msg):
+          # API-Fehler: fail-closed, ausser GUARD_FAIL_OPEN=true
+          if FAIL_OPEN:
+              out("⚠️  Deployment Guard: " + msg + " — GUARD_FAIL_OPEN=true, deployment continues.")
+              sys.exit(3)
+          out("❌ Deployment Guard: " + msg + " — failing (fail-closed). Set GUARD_FAIL_OPEN=true to tolerate API outages.")
+          sys.exit(1)
+
+
+      def clean(s, limit=4000):
+          # Steuerzeichen (ANSI, CR, ...) aus API-Text entfernen
+          s = "" if s is None else str(s)
+          return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", s)[:limit]
+
+
+      def git(*args):
+          return subprocess.run(["git", "-c", "core.quotePath=false", *args], capture_output=True)
+
+
+      def commit_exists(ref):
+          return git("rev-parse", "--verify", "--quiet", ref + "^{commit}").returncode == 0
+
+
+      def is_sha(v):
+          return bool(re.fullmatch(r"[0-9a-f]{40}([0-9a-f]{24})?", v or "")) and not re.fullmatch(r"0+", v)
+
+
+      api_url = E("GUARD_API_URL", "https://api.pantevosystems.com").rstrip("/")
+      if api_url.endswith("/analyze"):
+          api_url = api_url[: -len("/analyze")]
+      if not re.fullmatch(r"https://\S+|http://(localhost|127\.0\.0\.1)(:\d+)?", api_url):
+          fatal("GUARD_API_URL must start with https:// (%s)" % api_url)
+      try:
+          timeout = int(E("GUARD_HTTP_TIMEOUT", "120"))
+      except ValueError:
+          fatal("GUARD_HTTP_TIMEOUT must be a number (seconds)")
+
+      shallow = git("rev-parse", "--is-shallow-repository").stdout.decode().strip() == "true"
+      HINT = "Set GIT_DEPTH: 0 for the job (full clone)."
+
+      # ── Diff-Basis ──
+      base, source = "", ""
+      if E("GUARD_DIFF_BASE"):
+          base, source = E("GUARD_DIFF_BASE"), "GUARD_DIFF_BASE"
+          if not commit_exists(base):
+              fatal("diff base not available in the clone: '%s' (%s). %s" % (base, source, HINT))
+      else:
+          for name in ("CI_MERGE_REQUEST_DIFF_BASE_SHA", "CI_COMMIT_BEFORE_SHA"):
+              v = E(name, "")
+              if not is_sha(v):
+                  continue
+              if commit_exists(v):
+                  base, source = v, name
+                  break
+              if shallow:
+                  fatal("diff base not available in the clone: '%s' (%s). %s" % (v, name, HINT))
+              out("⚠️  %s (%s) not in history (force push?) — trying next candidate" % (name, v[:8]))
+      if not base:
+          if commit_exists("HEAD~1"):
+              base, source = "HEAD~1", "HEAD~1"
+          elif not shallow and commit_exists("HEAD"):
+              base, source = EMPTY_TREE, "initial commit (empty tree)"
+          else:
+              fatal("diff base not available in the clone: 'HEAD~1'. %s" % HINT)
+
+      # ── Diff-Statistik ──
+      r = git("diff", "--numstat", base, "HEAD")
+      if r.returncode != 0:
+          fatal("git diff --numstat %s..HEAD: %s" % (base, clean(r.stderr.decode(errors="replace"), 300)))
+      added = removed = 0
+      for line in r.stdout.decode(errors="replace").splitlines():
+          parts = line.split("\t")
+          if len(parts) >= 3:
+              added += int(parts[0]) if parts[0].isdigit() else 0
+              removed += int(parts[1]) if parts[1].isdigit() else 0
+      r = git("diff", "--name-only", "-z", base, "HEAD")
+      if r.returncode != 0:
+          fatal("git diff --name-only %s..HEAD fehlgeschlagen" % base)
+      names = [n.decode(errors="replace") for n in r.stdout.split(b"\0") if n]
+
+      payload = {
+          "repo": E("CI_PROJECT_PATH") or E("BITBUCKET_REPO_FULL_NAME", ""),
+          "branch": E("CI_COMMIT_REF_NAME") or E("BITBUCKET_BRANCH", ""),
+          "commit_sha": E("CI_COMMIT_SHA") or E("BITBUCKET_COMMIT", ""),
+          "diff_lines_added": added,
+          "diff_lines_removed": removed,
+          "diff_files_changed": len(names),
+      }
+      if EXTENDED:
+          k8s_re = re.compile(r"^(k8s|manifests|helm|deploy|kubernetes).*\.(yaml|yml)$")
+          values_re = re.compile(r"values.*\.yaml$|values\.yml$")
+          payload["k8s_manifests_changed"] = sum(1 for n in names if k8s_re.search(n))
+          payload["helm_values_changed"] = sum(1 for n in names if values_re.search(n))
+          payload["helm_chart_bumped"] = any(re.search(r"Chart\.yaml$", n) for n in names)
+
+      summary = "Diff: +%d -%d (%d files), base: %s (%s)" % (added, removed, len(names), base[:12], source)
+      if EXTENDED:
+          summary += ", K8s: %d, Helm values: %d, Chart bump: %s" % (
+              payload["k8s_manifests_changed"], payload["helm_values_changed"], str(payload["helm_chart_bumped"]).lower())
+      out(summary)
+
+      # ── API Call (Key nur im Header, nie auf der Kommandozeile) ──
+      req = urllib.request.Request(
+          api_url + "/analyze",
+          data=json.dumps(payload).encode("utf-8"),
+          method="POST",
+          headers={"Content-Type": "application/json", "X-API-Key": E("GUARD_API_KEY", "")},
+      )
+      try:
+          with urllib.request.urlopen(req, timeout=timeout) as resp:
+              code, body = resp.status, resp.read()
+      except urllib.error.HTTPError as e:
+          code, body = e.code, e.read()
+      except Exception as e:  # Netzwerkfehler, Timeout, TLS
+          soft("API unreachable (%s)" % type(e).__name__)
+
+      if code in (401, 403):
+          out(clean(body.decode(errors="replace"), 500))
+          fatal("API key invalid or not authorized (HTTP %d)" % code)
+      if code in (400, 422):
+          out(clean(body.decode(errors="replace"), 500))
+          fatal("request rejected — check the inputs (HTTP %d)" % code)
+      if code != 200:
+          soft("API error (HTTP %d)" % code)
+
+      try:
+          data = json.loads(body)
+      except ValueError:
+          soft("invalid API response (no JSON)")
+      if not isinstance(data, dict):
+          soft("invalid API response (no object)")
+      status = data.get("status")
+      score = data.get("score")
+      if status not in ("PASS", "WARN", "BLOCKED"):
+          soft("invalid API response (status=%r)" % clean(status, 40))
+      if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 100:
+          soft("invalid API response (score=%r)" % clean(score, 40))
+      score = int(round(score))
+      verdict = clean(data.get("verdict"), 60).replace("\n", " ").replace("\t", " ")
+
+      out("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+      out("🛡️  Deployment Guard")
+      out("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+      out("Score:   %d / 100" % score)
+      out("Verdict: " + verdict)
+      out("Status:  " + status)
+      explanation = clean(data.get("explanation"))
+      if explanation:
+          out("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+          out("Explanation: " + explanation)
+      out("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+      out("Dashboard: https://www.pantevosystems.com/dashboard")
+
+      with open(os.environ["DG_RESULT"], "w") as f:
+          f.write("%s\n%d\n%s\n" % (status, score, verdict))
+      PY
+      if [ "$RC" = "3" ]; then
+        exit 0   # GUARD_FAIL_OPEN=true: API-Fehler toleriert
+      fi
+      if [ "$RC" != "0" ]; then
+        exit "$RC"
+      fi
+
+      STATUS=$(sed -n 1p "$DG_RESULT")
+      SCORE=$(sed -n 2p "$DG_RESULT")
+      VERDICT=$(sed -n 3p "$DG_RESULT")
+      rm -f "$DG_RESULT"
+
+      # Exit logic (decision of the API, thresholds from the dashboard)
       if [ "$STATUS" = "BLOCKED" ]; then
         echo "❌ Deployment BLOCKED by risk score."
         exit 1
