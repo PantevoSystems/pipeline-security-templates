@@ -176,4 +176,4 @@ MIT — use freely, attribution appreciated.
 
 ---
 
-*Built with ❤️ in Monheim am Rhein*
+*Built with ❤️ in Germany*
