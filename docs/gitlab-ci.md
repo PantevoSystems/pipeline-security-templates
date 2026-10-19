@@ -11,7 +11,7 @@ Unlike GitHub Actions' Reusable Workflows, GitLab uses an `include` + `extends` 
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/trivy.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/trivy.yml'
 
 stages:
   - test
@@ -23,14 +23,14 @@ trivy_scan:
 
 That's it. Push and watch the pipeline.
 
-> 📌 Includes are pinned to a release tag (`v1.2.3`). Don't include from `main` in production — a change on `main` would run in your pipeline without review.
+> 📌 Includes are pinned to a release tag (`v1.2.4`). Don't include from `main` in production — a change on `main` would run in your pipeline without review.
 
 ### Full stack — all three tools
 
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/full-stack.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/full-stack.yml'
 
 stages:
   - security
@@ -55,7 +55,7 @@ All three jobs run in parallel within the `security` stage.
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/full-stack-with-guard.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/full-stack-with-guard.yml'
 
 stages:
   - security
@@ -85,7 +85,7 @@ The `.deployment_guard_template` job sets `GIT_DEPTH: "0"` (full clone) itself a
 | Variable | Default | Effect |
 |---|---|---|
 | `GUARD_FAIL_ON_WARN` | `false` | Also fail on WARN |
-| `GUARD_FAIL_OPEN` | `false` | `true`: API unreachable / 429 / 5xx / invalid response only warns. Default: the job fails (fail-closed). Invalid key (401/403) and rejected requests (400/422) always fail. |
+| `GUARD_FAIL_OPEN` | `true` | API unreachable / 429 / 5xx / invalid response only warns. `false`: the job fails (fail-closed). Invalid key (401/403) and rejected requests (400/422) always fail. |
 | `GUARD_ALLOW_MISSING_KEY` | `false` | `true`: skip instead of fail when `GUARD_API_KEY` is not set |
 | `GUARD_API_URL` | `https://api.pantevosystems.com` | API base URL (https only) |
 

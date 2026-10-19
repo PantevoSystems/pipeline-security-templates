@@ -5,8 +5,8 @@
 #
 # Optional repository variables:
 #   GUARD_FAIL_ON_WARN=true       — also fail on WARN
-#   GUARD_FAIL_OPEN=true          — continue when the API is unreachable / 429 / 5xx / returns an
-#                                   invalid response (default: fail closed)
+#   GUARD_FAIL_OPEN=false         — fail when the API is unreachable / 429 / 5xx / returns an
+#                                   invalid response (default: true, warning only)
 #   GUARD_ALLOW_MISSING_KEY=true  — skip (instead of fail) when GUARD_API_KEY is not set
 #   GUARD_DIFF_BASE=<sha>         — override the diff base
 #
@@ -72,7 +72,7 @@ pipelines:
             EXTENDED = False   # True: zusätzlich K8s-/Helm-Zähler senden
             EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
             E = os.environ.get
-            FAIL_OPEN = E("GUARD_FAIL_OPEN", "false") == "true"
+            FAIL_OPEN = E("GUARD_FAIL_OPEN", "true") == "true"
 
 
             def out(msg):
@@ -85,7 +85,7 @@ pipelines:
 
 
             def soft(msg):
-                # API-Fehler: fail-closed, ausser GUARD_FAIL_OPEN=true
+                # API-Fehler: Warnung (GUARD_FAIL_OPEN=true, Standard) oder Abbruch (false)
                 if FAIL_OPEN:
                     out("⚠️  Deployment Guard: " + msg + " — GUARD_FAIL_OPEN=true, deployment continues.")
                     sys.exit(3)

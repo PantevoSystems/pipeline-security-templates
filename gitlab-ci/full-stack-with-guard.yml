@@ -4,8 +4,8 @@
 #
 # Usage in your .gitlab-ci.yml:
 #
-#   include:   # pinned to release tag v1.2.3 (next release) — never main
-#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/full-stack-with-guard.yml'
+#   include:   # pinned to release tag v1.2.4 (next release) — never main
+#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/full-stack-with-guard.yml'
 #
 #   stages:
 #     - security
@@ -32,8 +32,8 @@
 #
 # Optional variables:
 #   GUARD_FAIL_ON_WARN=true       — also fail on WARN
-#   GUARD_FAIL_OPEN=true          — let the pipeline continue when the API is unreachable / 429 / 5xx /
-#                                   returns an invalid response (default: fail closed)
+#   GUARD_FAIL_OPEN=false         — fail when the API is unreachable / 429 / 5xx / returns an
+#                                   invalid response (default: true, warning only)
 #   GUARD_ALLOW_MISSING_KEY=true  — skip (instead of fail) when GUARD_API_KEY is not set
 #   GUARD_DIFF_BASE=<sha>         — override the diff base
 #
@@ -41,15 +41,15 @@
 # The guard job sets GIT_DEPTH: 0 (full clone) so the base commit is available.
 #
 # Sent to the API: repo path, branch, commit SHA, lines added/removed, files changed.
-# No source code, no file contents, no file paths.
+# No source code, no file contents.
 #
-# The includes are pinned to the release tag v1.2.3 (not main). Pin to a tag you have reviewed.
+# The includes are pinned to the release tag v1.2.4 (not main). Pin to a tag you have reviewed.
 
-# Pinned to release tag v1.2.3 (next release) instead of main — the tag must exist before use.
+# Pinned to release tag v1.2.4 (next release) instead of main — the tag must exist before use.
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/trivy.yml'
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/semgrep.yml'
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.3/gitlab-ci/checkov.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/trivy.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/semgrep.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/checkov.yml'
 
 .deployment_guard_template:
   stage: risk
@@ -58,7 +58,7 @@ include:
     GIT_DEPTH: "0"
     GUARD_API_URL: "https://api.pantevosystems.com"
     GUARD_FAIL_ON_WARN: "false"
-    GUARD_FAIL_OPEN: "false"
+    GUARD_FAIL_OPEN: "true"
     GUARD_ALLOW_MISSING_KEY: "false"
   before_script:
     - apt-get update -qq && apt-get install -y -qq --no-install-recommends git > /dev/null
@@ -89,7 +89,7 @@ include:
       EXTENDED = False   # True: zusätzlich K8s-/Helm-Zähler senden
       EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
       E = os.environ.get
-      FAIL_OPEN = E("GUARD_FAIL_OPEN", "false") == "true"
+      FAIL_OPEN = E("GUARD_FAIL_OPEN", "true") == "true"
 
 
       def out(msg):
@@ -102,7 +102,7 @@ include:
 
 
       def soft(msg):
-          # API-Fehler: fail-closed, ausser GUARD_FAIL_OPEN=true
+          # API-Fehler: Warnung (GUARD_FAIL_OPEN=true, Standard) oder Abbruch (false)
           if FAIL_OPEN:
               out("⚠️  Deployment Guard: " + msg + " — GUARD_FAIL_OPEN=true, deployment continues.")
               sys.exit(3)

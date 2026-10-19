@@ -84,7 +84,7 @@ The default Bitbucket clone is shallow. The guard step uses a full clone and dif
 
 If the base commit is missing, the step fails instead of scoring an empty diff.
 
-Guard variables: `GUARD_FAIL_ON_WARN` (default `false`), `GUARD_FAIL_OPEN` (default `false` — API unreachable / 429 / 5xx / invalid response fail the step; invalid key and rejected requests always fail), `GUARD_ALLOW_MISSING_KEY` (default `false` — a missing `GUARD_API_KEY` fails the step).
+Guard variables: `GUARD_FAIL_ON_WARN` (default `false`), `GUARD_FAIL_OPEN` (default `true` — API unreachable / 429 / 5xx / invalid response only warn; set `false` to fail the step; invalid key and rejected requests always fail), `GUARD_ALLOW_MISSING_KEY` (default `false` — a missing `GUARD_API_KEY` fails the step).
 
 Sent to the API: repository name, branch, commit SHA, lines added / removed, files changed. No source code, no file contents, no file paths.
 
