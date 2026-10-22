@@ -54,7 +54,7 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run Semgrep scan
         id: scan
@@ -108,7 +108,7 @@ jobs:
           exit 0
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true 
         with:
