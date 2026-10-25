@@ -10,18 +10,18 @@ on:
 permissions:
   contents: read
 
-# Pin auf ein Release-Tag (v1.2.5 = nächstes Release) — in Produktion nie den main-Branch referenzieren.
+# Pin auf ein Release-Tag (v1.2.6 = nächstes Release) — in Produktion nie den main-Branch referenzieren.
 jobs:
   # Option 1 — Single tool (uncomment to use)
   #
   # trivy:
-  #   uses: PantevoSystems/pipeline-security-templates/.github/workflows/trivy-container-scan.yml@v1.2.5
+  #   uses: PantevoSystems/pipeline-security-templates/.github/workflows/trivy-container-scan.yml@v1.2.6
   #   with:
   #     dockerfile: examples/nodejs-app/Dockerfile
 
   # Option 2 — Full stack (Trivy + Semgrep + Checkov in parallel)
   security:
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack.yml@v1.2.5
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack.yml@v1.2.6
     permissions:
       contents: read
       security-events: write
@@ -37,7 +37,7 @@ jobs:
   # Option 3 — Full stack + Deployment Guard (requires GUARD_API_KEY secret)
   #
   # security-with-guard:
-  #   uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.5
+  #   uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.6
   #   permissions:
   #     contents: read
   #     security-events: write

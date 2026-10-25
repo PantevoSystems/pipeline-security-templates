@@ -2,8 +2,8 @@
 #
 # Usage in your .gitlab-ci.yml:
 #
-#   include:   # pinned to release tag v1.2.5 (next release) — never main
-#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/checkov.yml'
+#   include:   # pinned to release tag v1.2.6 (next release) — never main
+#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/checkov.yml'
 #
 #   checkov_scan:
 #     extends: .checkov_template

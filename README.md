@@ -33,7 +33,7 @@ on: [push, pull_request]
 
 jobs:
   security:
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack.yml@v1.2.5
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack.yml@v1.2.6
 ```
 
 → Findings land in your repo's **Security tab**.
@@ -43,7 +43,7 @@ jobs:
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/full-stack.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/full-stack.yml'
 
 stages:
   - security
@@ -74,7 +74,7 @@ Want a single 0–100 risk score before every deployment? Try [Deployment Guard]
 ```yaml
 jobs:
   security:
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.5
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.6
     permissions:
       contents: read
       security-events: write
@@ -145,10 +145,10 @@ Built by [Pantevo Systems](https://www.pantevosystems.com) — focused on DevOps
 We follow [SemVer](https://semver.org/). Pin to a release tag in production:
 
 ```yaml
-uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack.yml@v1.2.5
+uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack.yml@v1.2.6
 ```
 
-`@main` is the dev branch — fine for testing, **don't use in production**. The same applies to GitLab `include: remote:` URLs — point them at a tag (`…/v1.2.5/gitlab-ci/…`), not at `main`.
+`@main` is the dev branch — fine for testing, **don't use in production**. The same applies to GitLab `include: remote:` URLs — point them at a tag (`…/v1.2.6/gitlab-ci/…`), not at `main`.
 
 Third-party actions inside the workflows are pinned to full commit SHAs (with the version as a comment); Docker images use fixed version tags.
 

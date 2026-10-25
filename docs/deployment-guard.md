@@ -9,7 +9,7 @@ Add it to your existing security pipeline by using the `full-stack-with-guard.ym
 ~~~yaml
 jobs:
   security:
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.5
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.6
     permissions:
       contents: read
       security-events: write
@@ -39,7 +39,7 @@ Further behaviour:
 - **Scanner results are verified.** If a scanner job that was not skipped ends with `failure` or `cancelled`, the guard job fails with *"scanner did not complete, refusing to score with 0 findings"* instead of reporting PASS with zero findings. (With `fail-on-issues: true` a scanner also fails when it finds issues — then the pipeline is red anyway.)
 - **Full history.** The guard checks out with `fetch-depth: 0` and diffs against the push's `before` commit, the pull request's base commit or `HEAD~1`. A missing base commit fails the job. Tag, release and `workflow_dispatch` runs fall back to `HEAD~1` (only the last commit is scored, a warning is shown) — set `GUARD_DIFF_BASE` for such deploys. Repository `.gitattributes` are ignored for the diff, so `* -diff` cannot hide changed lines.
 - **Scanners fail loudly.** A scanner crash (Semgrep exit ≥ 2) or a missing/invalid result file fails the scanner job regardless of `fail-on-issues` — never 0 findings. Result files are written to `$RUNNER_TEMP` (Checkov: deleted before the scan), so a pull request cannot plant its own results.
-- **Pinning.** Third-party actions are pinned to commit SHAs; the Deployment Guard action itself is referenced as `@v1`. Reference this workflow by release tag (`@v1.2.5`) or commit SHA, never `@main`.
+- **Pinning.** Third-party actions are pinned to commit SHAs; the Deployment Guard action itself is referenced as `@v1`. Reference this workflow by release tag (`@v1.2.6`) or commit SHA, never `@main`.
 
 ## What data is sent
 
@@ -99,7 +99,7 @@ Deployment Guard works best layered on top of detailed security findings. The `f
 ~~~yaml
 jobs:
   security:
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.5
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.6
     permissions:
       contents: read
       security-events: write

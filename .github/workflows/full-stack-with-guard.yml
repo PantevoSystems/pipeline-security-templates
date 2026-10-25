@@ -9,7 +9,7 @@ name: Full Security Stack + Deployment Guard
 #
 # jobs:
 #   security:
-#     uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.5
+#     uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.6
 #     permissions:
 #       contents: read
 #       security-events: write
@@ -136,7 +136,7 @@ jobs:
   trivy:
     needs: detect
     if: inputs.skip-trivy == false && needs.detect.outputs.has_dockerfile == 'true'
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/trivy-container-scan.yml@v1.2.5 # eigenes Repo, Release-Tag
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/trivy-container-scan.yml@v1.2.6 # eigenes Repo, Release-Tag
     permissions:
       contents: read
       security-events: write
@@ -149,7 +149,7 @@ jobs:
 
   semgrep:
     if: inputs.skip-semgrep == false
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/semgrep-sast.yml@v1.2.5 # eigenes Repo, Release-Tag
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/semgrep-sast.yml@v1.2.6 # eigenes Repo, Release-Tag
     permissions:
       contents: read
       security-events: write
@@ -162,7 +162,7 @@ jobs:
 
   checkov:
     if: inputs.skip-checkov == false
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/checkov-iac.yml@v1.2.5 # eigenes Repo, Release-Tag
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/checkov-iac.yml@v1.2.6 # eigenes Repo, Release-Tag
     permissions:
       contents: read
       security-events: write

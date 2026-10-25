@@ -4,8 +4,8 @@
 #
 # Usage in your .gitlab-ci.yml:
 #
-#   include:   # pinned to release tag v1.2.5 (next release) — never main
-#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/full-stack-with-guard.yml'
+#   include:   # pinned to release tag v1.2.6 (next release) — never main
+#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/full-stack-with-guard.yml'
 #
 #   stages:
 #     - security
@@ -49,13 +49,13 @@
 # Sent to the API: repo path, branch, commit SHA, lines added/removed, files changed.
 # No source code, no file contents.
 #
-# The includes are pinned to the release tag v1.2.5 (not main). Pin to a tag you have reviewed.
+# The includes are pinned to the release tag v1.2.6 (not main). Pin to a tag you have reviewed.
 
-# Pinned to release tag v1.2.5 (next release) instead of main — the tag must exist before use.
+# Pinned to release tag v1.2.6 (next release) instead of main — the tag must exist before use.
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/trivy.yml'
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/semgrep.yml'
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/checkov.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/trivy.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/semgrep.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/checkov.yml'
 
 .deployment_guard_template:
   stage: risk

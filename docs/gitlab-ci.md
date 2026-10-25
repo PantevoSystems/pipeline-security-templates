@@ -11,7 +11,7 @@ Unlike GitHub Actions' Reusable Workflows, GitLab uses an `include` + `extends` 
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/trivy.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/trivy.yml'
 
 stages:
   - test
@@ -23,14 +23,14 @@ trivy_scan:
 
 That's it. Push and watch the pipeline.
 
-> 📌 Includes are pinned to a release tag (`v1.2.5`). Don't include from `main` in production — a change on `main` would run in your pipeline without review.
+> 📌 Includes are pinned to a release tag (`v1.2.6`). Don't include from `main` in production — a change on `main` would run in your pipeline without review.
 
 ### Full stack — all three tools
 
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/full-stack.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/full-stack.yml'
 
 stages:
   - security
@@ -55,7 +55,7 @@ All three jobs run in parallel within the `security` stage.
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/full-stack-with-guard.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.6/gitlab-ci/full-stack-with-guard.yml'
 
 stages:
   - security
