@@ -11,7 +11,7 @@ Unlike GitHub Actions' Reusable Workflows, GitLab uses an `include` + `extends` 
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/trivy.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/trivy.yml'
 
 stages:
   - test
@@ -23,14 +23,14 @@ trivy_scan:
 
 That's it. Push and watch the pipeline.
 
-> 📌 Includes are pinned to a release tag (`v1.2.4`). Don't include from `main` in production — a change on `main` would run in your pipeline without review.
+> 📌 Includes are pinned to a release tag (`v1.2.5`). Don't include from `main` in production — a change on `main` would run in your pipeline without review.
 
 ### Full stack — all three tools
 
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/full-stack.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/full-stack.yml'
 
 stages:
   - security
@@ -55,7 +55,7 @@ All three jobs run in parallel within the `security` stage.
 ```yaml
 # .gitlab-ci.yml
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/full-stack-with-guard.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/full-stack-with-guard.yml'
 
 stages:
   - security
@@ -80,12 +80,12 @@ deployment_guard:
 
 Set `GUARD_API_KEY` in your repo's CI/CD variables (Settings → CI/CD → Variables → Add variable, masked: yes).
 
-The `.deployment_guard_template` job sets `GIT_DEPTH: "0"` (full clone) itself and diffs against `CI_MERGE_REQUEST_DIFF_BASE_SHA` (merge requests), `CI_COMMIT_BEFORE_SHA` (pushes) or `HEAD~1` (fallback). Override with `GUARD_DIFF_BASE`.
+The `.deployment_guard_template` job sets `GIT_DEPTH: "0"` (full clone) itself and diffs against `CI_MERGE_REQUEST_DIFF_BASE_SHA` (merge requests), `CI_COMMIT_BEFORE_SHA` (pushes) or `HEAD~1` (fallback). Override with `GUARD_DIFF_BASE`. Tag pipelines, new branches and manual runs fall back to `HEAD~1` and only score the last commit — the job prints `[guard] WARNING: diff base fell back to HEAD~1`; set `GUARD_DIFF_BASE` for tag/release deploys. Repository `.gitattributes` are ignored for the diff (git ≥ 2.40), so `* -diff` cannot hide changed lines.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `GUARD_FAIL_ON_WARN` | `false` | Also fail on WARN |
-| `GUARD_FAIL_OPEN` | `true` | API unreachable / 429 / 5xx / invalid response only warns. `false`: the job fails (fail-closed). Invalid key (401/403) and rejected requests (400/422) always fail. |
+| `GUARD_FAIL_ON_WARN` | `false` | Also fail on WARN. All boolean variables accept exactly `true` or `false` — anything else fails the job. |
+| `GUARD_FAIL_OPEN` | `true` | Only outages — API unreachable/timeout, 429, 5xx or an invalid body on HTTP 200 — warn. `false`: the job fails (fail-closed). Every other HTTP status (redirects, 401/402/403/404/413/422, …) always fails; redirects are never followed. |
 | `GUARD_ALLOW_MISSING_KEY` | `false` | `true`: skip instead of fail when `GUARD_API_KEY` is not set |
 | `GUARD_API_URL` | `https://api.pantevosystems.com` | API base URL (https only) |
 

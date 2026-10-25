@@ -74,7 +74,7 @@ For most users: **prefer Trivy filesystem scanning** (`trivy fs`) over container
 
 ### "Could not find previous commit" (Deployment Guard)
 
-The default Bitbucket clone is shallow. The guard step uses a full clone and diffs against `HEAD~1` (Bitbucket provides no "before" SHA; override with the variable `GUARD_DIFF_BASE`):
+The default Bitbucket clone is shallow. The guard step uses a full clone. Pull-request pipelines diff against `merge-base(HEAD, BITBUCKET_PR_DESTINATION_COMMIT)`; branch pipelines fall back to `HEAD~1` (Bitbucket provides no "before" SHA — only the last commit is scored and the step prints `[guard] WARNING: diff base fell back to HEAD~1`). Set `GUARD_DIFF_BASE` for tag/release deploys. Repository `.gitattributes` are ignored for the diff (git ≥ 2.40):
 
 ```yaml
 - step:
@@ -84,7 +84,7 @@ The default Bitbucket clone is shallow. The guard step uses a full clone and dif
 
 If the base commit is missing, the step fails instead of scoring an empty diff.
 
-Guard variables: `GUARD_FAIL_ON_WARN` (default `false`), `GUARD_FAIL_OPEN` (default `true` — API unreachable / 429 / 5xx / invalid response only warn; set `false` to fail the step; invalid key and rejected requests always fail), `GUARD_ALLOW_MISSING_KEY` (default `false` — a missing `GUARD_API_KEY` fails the step).
+Guard variables: `GUARD_FAIL_ON_WARN` (default `false`), `GUARD_FAIL_OPEN` (default `true` — only outages: API unreachable/timeout, 429, 5xx or an invalid body on HTTP 200 warn; set `false` to fail the step; every other HTTP status, including redirects, always fails — redirects are never followed), `GUARD_ALLOW_MISSING_KEY` (default `false` — a missing `GUARD_API_KEY` fails the step).
 
 Sent to the API: repository name, branch, commit SHA, lines added / removed, files changed. No source code, no file contents, no file paths.
 

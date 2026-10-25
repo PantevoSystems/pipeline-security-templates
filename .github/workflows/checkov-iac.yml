@@ -54,6 +54,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # checkov-action läuft als Docker-Action und kann nur in den Workspace schreiben.
+      # Vorhandene Ergebnisdateien (z. B. aus einem PR eingecheckt) vorher löschen.
+      - name: Remove pre-existing result files
+        shell: bash
+        run: rm -rf -- checkov-results.sarif results_sarif.sarif
+
       - name: Run Checkov
         id: checkov
         uses: bridgecrewio/checkov-action@6f26dc90000b74feb589a906cdfae540f5119895 # v12.3134.0
@@ -68,41 +74,59 @@ jobs:
           download_external_modules: true
           quiet: false
 
+      # Ergebnis prüfen und nach RUNNER_TEMP kopieren — Upload und Parsing nutzen denselben Pfad.
+      # Fehlt die Datei, ist der Scan nicht durchgelaufen → Job schlägt fehl (nie still 0 Findings).
+      - name: Locate SARIF
+        id: locate
+        if: always()
+        shell: bash
+        run: |
+          # checkov-action v12 schreibt manchmal in ein Verzeichnis statt direkt zur Datei
+          FOUND=""
+          for candidate in \
+              checkov-results.sarif \
+              checkov-results.sarif/results_sarif.sarif \
+              results_sarif.sarif; do
+            if [ -f "$candidate" ] && [ ! -L "$candidate" ]; then
+              FOUND="$candidate"
+              break
+            fi
+          done
+          if [ -z "$FOUND" ] || ! jq -e '.runs | type == "array"' "$FOUND" >/dev/null 2>&1; then
+            echo "::error title=Checkov::No valid SARIF result - the scan did not complete. Refusing to report 0 findings."
+            exit 1
+          fi
+          SARIF="${RUNNER_TEMP:?RUNNER_TEMP not set}/checkov-results.sarif"
+          rm -rf -- "$SARIF"
+          cp -- "$FOUND" "$SARIF"
+          echo "sarif=$SARIF" >> "$GITHUB_OUTPUT"
+          echo "Checkov SARIF: $FOUND"
+
       - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@ce5e7eeac396d720fe2d802714996c8ce561e311 # v3.39.0
-        if: always()
+        if: always() && steps.locate.outputs.sarif != ''
         continue-on-error: true 
         with:
-          sarif_file: 'checkov-results.sarif'
+          sarif_file: ${{ steps.locate.outputs.sarif }}
           category: checkov
 
       - name: Parse SARIF for Deployment Guard
         id: parse
         if: always()
         shell: bash
+        env:
+          SARIF: ${{ steps.locate.outputs.sarif }}
         run: |
-          # checkov-action v12 schreibt manchmal in ein Verzeichnis statt direkt zur Datei
-          SARIF=""
-          for candidate in \
-              checkov-results.sarif \
-              checkov-results.sarif/results_sarif.sarif \
-              results_sarif.sarif; do
-            if [ -f "$candidate" ]; then
-              SARIF="$candidate"
-              break
-            fi
-          done
-          if [ -z "$SARIF" ]; then
-            echo "total_count=0" >> $GITHUB_OUTPUT
-            echo "critical_count=0" >> $GITHUB_OUTPUT
-            exit 0
+          if [ -z "$SARIF" ] || [ ! -s "$SARIF" ]; then
+            echo "::error title=Checkov::No SARIF result - refusing to report 0 findings."
+            exit 1
           fi
           # Checkov: alle level=error sind failed checks. CRITICAL via properties.severity.
-          TOTAL=$(jq '[.runs[0].results[]? | select(.level == "error")] | length' "$SARIF")
-          CRIT=$(jq  '[.runs[0].results[]?
+          TOTAL=$(jq '[.runs[]?.results[]? | select(.level == "error")] | length' "$SARIF") || exit 1
+          CRIT=$(jq  '[.runs[]?.results[]?
                        | select(.level == "error")
                        | select((.properties.severity? // "" | ascii_upcase) == "CRITICAL")
-                      ] | length' "$SARIF")
-          echo "total_count=${TOTAL:-0}" >> $GITHUB_OUTPUT
-          echo "critical_count=${CRIT:-0}" >> $GITHUB_OUTPUT
-          echo "Checkov: $TOTAL failed, $CRIT CRITICAL (parsed: $SARIF)"
+                      ] | length' "$SARIF") || exit 1
+          echo "total_count=${TOTAL}" >> "$GITHUB_OUTPUT"
+          echo "critical_count=${CRIT}" >> "$GITHUB_OUTPUT"
+          echo "Checkov: $TOTAL failed, $CRIT CRITICAL"

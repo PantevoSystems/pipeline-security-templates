@@ -73,7 +73,7 @@ jobs:
 | Input | Default | Description |
 |---|---|---|
 | `config` | `p/default` | Ruleset. See [Semgrep registry](https://semgrep.dev/r) |
-| `severity` | `WARNING` | Minimum severity: ERROR, WARNING, INFO |
+| `severity` | `WARNING` | Minimum severity: ERROR, WARNING, INFO. Higher levels are included automatically (`WARNING` → `--severity=WARNING --severity=ERROR`) |
 | `fail-on-issues` | `true` | Fail the build on findings |
 | `paths-include` | `''` | Paths to include (newline-separated) |
 | `paths-exclude` | `''` | Paths to exclude (newline-separated) |

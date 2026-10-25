@@ -9,7 +9,7 @@ Add it to your existing security pipeline by using the `full-stack-with-guard.ym
 ~~~yaml
 jobs:
   security:
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.4
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.5
     permissions:
       contents: read
       security-events: write
@@ -30,15 +30,16 @@ jobs:
 | Input | Default | Effect |
 |---|---|---|
 | `guard-fail-on-warn` | `false` | Also fail on WARN (BLOCKED always fails) |
-| `guard-fail-open` | `true` | API unreachable, HTTP 429/5xx or an invalid response only warn and the pipeline continues (advisory gate). `false`: the guard job fails (**fail-closed**). Invalid API key (401/403) and rejected requests (400/422) always fail. |
+| `guard-fail-open` | `true` | Only outages — API unreachable/timeout, HTTP 429, HTTP 5xx or an invalid body on HTTP 200 — warn and the pipeline continues (advisory gate). `false`: the guard job fails (**fail-closed**). Every other HTTP status (redirects, 401/402/403/404/413/422, …) always fails. |
 | `allow-missing-key` | `false` | `true`: only warn and skip when the `guard-api-key` secret is missing. Default: the guard job fails. |
 | `skip-guard` | `false` | Don't run the guard job at all |
 
 Further behaviour:
 
 - **Scanner results are verified.** If a scanner job that was not skipped ends with `failure` or `cancelled`, the guard job fails with *"scanner did not complete, refusing to score with 0 findings"* instead of reporting PASS with zero findings. (With `fail-on-issues: true` a scanner also fails when it finds issues — then the pipeline is red anyway.)
-- **Full history.** The guard checks out with `fetch-depth: 0` and diffs against the push's `before` commit, the pull request's base commit or `HEAD~1`. A missing base commit fails the job.
-- **Pinning.** Third-party actions are pinned to commit SHAs; the Deployment Guard action itself is referenced as `@v1`. Reference this workflow by release tag (`@v1.2.4`) or commit SHA, never `@main`.
+- **Full history.** The guard checks out with `fetch-depth: 0` and diffs against the push's `before` commit, the pull request's base commit or `HEAD~1`. A missing base commit fails the job. Tag, release and `workflow_dispatch` runs fall back to `HEAD~1` (only the last commit is scored, a warning is shown) — set `GUARD_DIFF_BASE` for such deploys. Repository `.gitattributes` are ignored for the diff, so `* -diff` cannot hide changed lines.
+- **Scanners fail loudly.** A scanner crash (Semgrep exit ≥ 2) or a missing/invalid result file fails the scanner job regardless of `fail-on-issues` — never 0 findings. Result files are written to `$RUNNER_TEMP` (Checkov: deleted before the scan), so a pull request cannot plant its own results.
+- **Pinning.** Third-party actions are pinned to commit SHAs; the Deployment Guard action itself is referenced as `@v1`. Reference this workflow by release tag (`@v1.2.5`) or commit SHA, never `@main`.
 
 ## What data is sent
 
@@ -98,7 +99,7 @@ Deployment Guard works best layered on top of detailed security findings. The `f
 ~~~yaml
 jobs:
   security:
-    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.4
+    uses: PantevoSystems/pipeline-security-templates/.github/workflows/full-stack-with-guard.yml@v1.2.5
     permissions:
       contents: read
       security-events: write

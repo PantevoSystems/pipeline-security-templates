@@ -2,8 +2,8 @@
 #
 # Usage in your .gitlab-ci.yml:
 #
-#   include:   # pinned to release tag v1.2.4 (next release) — never main
-#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/semgrep.yml'
+#   include:   # pinned to release tag v1.2.5 (next release) — never main
+#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/semgrep.yml'
 #
 #   semgrep_scan:
 #     extends: .semgrep_template
@@ -13,14 +13,22 @@
   image: semgrep/semgrep:1.92.0
   variables:
     SEMGREP_RULES: "p/default"
-    SEMGREP_SEVERITY: "WARNING"
+    SEMGREP_SEVERITY: "WARNING"     # Minimum: ERROR | WARNING (= WARNING+ERROR) | INFO (= all)
     SEMGREP_FAIL_ON_ISSUES: "true"
     SEMGREP_PATHS_EXCLUDE: ""    # Newline-separated, e.g. "tests/\nvendor/"
   script:
     - |
+      # --severity ist bei Semgrep ein exakter Filter (wiederholbar) — SEMGREP_SEVERITY ist
+      # eine Mindest-Severity, daher höhere Stufen explizit mitgeben.
+      case "$SEMGREP_SEVERITY" in
+        ERROR)   set -- --severity=ERROR ;;
+        WARNING) set -- --severity=WARNING --severity=ERROR ;;
+        INFO)    set -- --severity=INFO --severity=WARNING --severity=ERROR ;;
+        *) echo "❌ SEMGREP_SEVERITY must be ERROR, WARNING or INFO."; exit 1 ;;
+      esac
+
       # Path excludes als Positionsparameter sammeln — Here-Doc statt Pipe,
       # damit die Schleife nicht in einer Subshell läuft (sonst bleibt die Liste leer)
-      set --
       if [ -n "$SEMGREP_PATHS_EXCLUDE" ]; then
         while IFS= read -r line; do
           [ -z "$line" ] && continue
@@ -31,13 +39,15 @@
       fi
 
       # Run scan with table output for logs
-      semgrep scan --severity="$SEMGREP_SEVERITY" "$@" || true
+      semgrep scan "$@" || true
 
       # Run again with GitLab SAST format
       if [ "$SEMGREP_FAIL_ON_ISSUES" = "true" ]; then
-        semgrep scan --severity="$SEMGREP_SEVERITY" --gitlab-sast --output gl-sast-report.json "$@" --error
+        # --error: Exit 1 = Findings; Exit >= 2 = Scanner-Fehler (Job schlägt in beiden Fällen fehl)
+        semgrep scan --gitlab-sast --output gl-sast-report.json "$@" --error
       else
-        semgrep scan --severity="$SEMGREP_SEVERITY" --gitlab-sast --output gl-sast-report.json "$@"
+        # Ohne --error: Findings → Exit 0; Scanner-Fehler → Exit >= 2 (Job schlägt fehl)
+        semgrep scan --gitlab-sast --output gl-sast-report.json "$@"
       fi
   artifacts:
     when: always

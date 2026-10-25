@@ -59,12 +59,22 @@ jobs:
           DOCKERFILE: ${{ inputs.dockerfile }}
         run: docker build -t scan-target:latest -f "$DOCKERFILE" .
 
+      # Ergebnisdatei liegt in RUNNER_TEMP (nicht im Workspace) und wird vorher gelöscht —
+      # ein PR kann so keine eigene Ergebnisdatei unterschieben.
+      - name: Prepare result path
+        id: paths
+        shell: bash
+        run: |
+          SARIF="${RUNNER_TEMP:?RUNNER_TEMP not set}/trivy-results.sarif"
+          rm -rf -- "$SARIF"
+          echo "sarif=$SARIF" >> "$GITHUB_OUTPUT"
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ inputs.image == '' && 'scan-target:latest' || inputs.image }}
           format: 'sarif'
-          output: 'trivy-results.sarif'
+          output: ${{ steps.paths.outputs.sarif }}
           severity: ${{ inputs.severity }}
           ignore-unfixed: ${{ inputs.ignore-unfixed }}
           exit-code: ${{ inputs.fail-on-issues && '1' || '0' }}
@@ -74,29 +84,54 @@ jobs:
         if: always()
         continue-on-error: true 
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: ${{ steps.paths.outputs.sarif }}
           category: trivy-container
 
       - name: Parse SARIF for Deployment Guard
         id: parse
         if: always()
         shell: bash
+        env:
+          SARIF: ${{ steps.paths.outputs.sarif }}
         run: |
-          if [ ! -f trivy-results.sarif ]; then
-            echo "critical_count=0" >> $GITHUB_OUTPUT
-            echo "high_count=0" >> $GITHUB_OUTPUT
-            exit 0
+          # Fehlende oder ungültige Ergebnisdatei = Scanner-Fehler → Job schlägt fehl (nie still 0 Findings)
+          if [ ! -s "$SARIF" ] || ! jq -e '.runs | type == "array"' "$SARIF" >/dev/null 2>&1; then
+            echo "::error title=Trivy::No valid SARIF result - the scan did not complete. Refusing to report 0 findings."
+            exit 1
           fi
-          # Trivy SARIF: properties.security-severity = CVSS-Score (string)
-          # CRITICAL: >= 9.0, HIGH: 7.0-8.9
-          CRIT=$(jq '[.runs[0].results[]?
-                      | (.properties."security-severity" // "0" | tonumber)
-                      | select(. >= 9.0)] | length' trivy-results.sarif)
-          HIGH=$(jq '[.runs[0].results[]?
-                      | (.properties."security-severity" // "0" | tonumber)
-                      | select(. >= 7.0 and . < 9.0)] | length' trivy-results.sarif)
-          echo "critical_count=${CRIT:-0}" >> $GITHUB_OUTPUT
-          echo "high_count=${HIGH:-0}" >> $GITHUB_OUTPUT
+          # Trivy SARIF: die Severity steht an der Regel (runs[].tool.driver.rules[ruleIndex]),
+          # nicht am Result. CRITICAL: CVSS >= 9.0, HIGH: 7.0-8.9
+          JQ_PROG='
+          # CVSS-Score je Result über die Regel (runs[].tool.driver.rules) ermitteln:
+          # ruleIndex (wenn die id passt) → sonst Lookup per ruleId.
+          # Score: rule.properties."security-severity" → result.properties."security-severity"
+          #        → rule.properties.tags (CRITICAL=9.0, HIGH=7.0) → defaultConfiguration.level "error" = 7.0
+          def num: (tostring | tonumber?) // null;
+          [ .runs[]? as $run
+            | ($run.tool.driver.rules // []) as $rules
+            | $run.results[]?
+            | . as $res
+            | ( if ($res.ruleIndex | type) == "number" and $res.ruleIndex >= 0 and $res.ruleIndex < ($rules | length)
+                   and ($res.ruleId == null or $rules[$res.ruleIndex].id == $res.ruleId)
+                then $rules[$res.ruleIndex]
+                else (first($rules[] | select(.id == $res.ruleId)) // {})
+                end ) as $rule
+            | ( ($rule.properties."security-severity" | num)
+                // ($res.properties."security-severity" | num)
+                // ( ($rule.properties.tags // []) | map(ascii_upcase)
+                     | if index("CRITICAL") then 9.0 elif index("HIGH") then 7.0 else null end )
+                // (if ($rule.defaultConfiguration.level // "") == "error" then 7.0 else null end)
+                // 0 )
+          ] as $scores
+          | { critical: ($scores | map(select(. >= 9.0)) | length),
+              high:     ($scores | map(select(. >= 7.0 and . < 9.0)) | length) }
+          '
+          COUNTS=$(jq -c "$JQ_PROG" "$SARIF") || { echo "::error title=Trivy::Could not parse SARIF."; exit 1; }
+          CRIT=$(printf '%s' "$COUNTS" | jq '.critical')
+          HIGH=$(printf '%s' "$COUNTS" | jq '.high')
+          [[ "$CRIT" =~ ^[0-9]+$ && "$HIGH" =~ ^[0-9]+$ ]] || { echo "::error title=Trivy::Invalid counts."; exit 1; }
+          echo "critical_count=${CRIT}" >> "$GITHUB_OUTPUT"
+          echo "high_count=${HIGH}" >> "$GITHUB_OUTPUT"
           echo "Trivy: $CRIT CRITICAL, $HIGH HIGH"
 
       - name: Run Trivy (table output for logs)

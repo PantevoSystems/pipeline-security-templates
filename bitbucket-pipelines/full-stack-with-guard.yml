@@ -5,13 +5,19 @@
 #
 # Optional repository variables:
 #   GUARD_FAIL_ON_WARN=true       — also fail on WARN
-#   GUARD_FAIL_OPEN=false         — fail when the API is unreachable / 429 / 5xx / returns an
-#                                   invalid response (default: true, warning only)
+#   GUARD_FAIL_OPEN=false         — fail when the API is unreachable / times out / returns 429 / 5xx /
+#                                   an invalid body on HTTP 200 (default: true, warning only).
+#                                   Every other HTTP status (redirects, 401/402/403/404/413/422, …)
+#                                   always fails. Redirects are never followed.
+#   All boolean variables accept exactly true or false — anything else fails the step.
 #   GUARD_ALLOW_MISSING_KEY=true  — skip (instead of fail) when GUARD_API_KEY is not set
 #   GUARD_DIFF_BASE=<sha>         — override the diff base
 #
-# Diff base: HEAD~1 (Bitbucket provides no "before" SHA). The guard step uses
-# clone: depth: full so the base commit is always available.
+# Diff base: pull requests use merge-base(HEAD, BITBUCKET_PR_DESTINATION_COMMIT); branch
+# pipelines fall back to HEAD~1 (Bitbucket provides no "before" SHA — only the last commit is
+# scored, the step prints a WARNING). Set GUARD_DIFF_BASE for tag/release deploys.
+# The guard step uses clone: depth: full so the base commit is always available.
+# Repo .gitattributes are ignored for the diff (needs git >= 2.40), so "* -diff" cannot hide lines.
 #
 # Sent to the API: repo name, branch, commit SHA, lines added/removed, files changed.
 # No source code, no file contents, no file paths.
@@ -31,7 +37,15 @@ pipelines:
             name: Semgrep SAST
             image: semgrep/semgrep:1.92.0
             script:
-              - semgrep scan --config=${SEMGREP_RULES:-p/default} --severity=${SEMGREP_SEVERITY:-WARNING} --error
+              - |
+                # --severity is an exact filter: include higher levels (WARNING = WARNING + ERROR)
+                case "${SEMGREP_SEVERITY:-WARNING}" in
+                  ERROR)   set -- --severity=ERROR ;;
+                  WARNING) set -- --severity=WARNING --severity=ERROR ;;
+                  INFO)    set -- --severity=INFO --severity=WARNING --severity=ERROR ;;
+                  *) echo "SEMGREP_SEVERITY must be ERROR, WARNING or INFO"; exit 1 ;;
+                esac
+                semgrep scan --config="${SEMGREP_RULES:-p/default}" "$@" --error
 
         - step:
             name: Checkov IaC Scan
@@ -48,6 +62,13 @@ pipelines:
           - apt-get update -qq && apt-get install -y -qq --no-install-recommends git > /dev/null
           - |
             GUARD_FAIL_ON_WARN="${GUARD_FAIL_ON_WARN:-false}"
+            # Boolean variables: only exactly true/false (typos like "True" or "yes" must not change the gate)
+            for pair in "GUARD_FAIL_ON_WARN=${GUARD_FAIL_ON_WARN}" "GUARD_ALLOW_MISSING_KEY=${GUARD_ALLOW_MISSING_KEY:-false}" "GUARD_FAIL_OPEN=${GUARD_FAIL_OPEN:-true}"; do
+              case "${pair#*=}" in
+                true|false) ;;
+                *) echo "❌ ${pair%%=*} must be 'true' or 'false'."; exit 1 ;;
+              esac
+            done
 
             if [ -z "${GUARD_API_KEY:-}" ]; then
               if [ "${GUARD_ALLOW_MISSING_KEY:-false}" = "true" ]; then
@@ -72,35 +93,46 @@ pipelines:
             EXTENDED = False   # True: zusätzlich K8s-/Helm-Zähler senden
             EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
             E = os.environ.get
-            FAIL_OPEN = E("GUARD_FAIL_OPEN", "true") == "true"
+            FALLBACK_WARNING = ("[guard] WARNING: diff base fell back to HEAD~1 – only the last commit is scored. "
+                                "Set GUARD_DIFF_BASE for tag/release/dispatch deploys.")
 
 
             def out(msg):
                 print(msg, flush=True)
 
 
+            def clean(s, limit=4000):
+                # Steuerzeichen (ANSI, CR, C1, ...) aus fremdem Text entfernen — nur \n und \t bleiben
+                s = "" if s is None else str(s)
+                return re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", s)[:limit]
+
+
             def fatal(msg):
-                out("❌ Deployment Guard: " + msg)
+                out("❌ Deployment Guard: " + clean(msg))
                 sys.exit(1)
+
+
+            if E("GUARD_FAIL_OPEN", "true") not in ("true", "false"):
+                fatal("GUARD_FAIL_OPEN must be 'true' or 'false' (got %r)" % clean(E("GUARD_FAIL_OPEN"), 40))
+            FAIL_OPEN = E("GUARD_FAIL_OPEN", "true") == "true"
 
 
             def soft(msg):
-                # API-Fehler: Warnung (GUARD_FAIL_OPEN=true, Standard) oder Abbruch (false)
+                # Nur echte Ausfälle (Netzwerk, Timeout, 429, 5xx, ungültiger 200-Body):
+                # Warnung (GUARD_FAIL_OPEN=true, Standard) oder Abbruch (false)
                 if FAIL_OPEN:
-                    out("⚠️  Deployment Guard: " + msg + " — GUARD_FAIL_OPEN=true, deployment continues.")
+                    out("⚠️  Deployment Guard: " + clean(msg) + " — GUARD_FAIL_OPEN=true, deployment continues.")
                     sys.exit(3)
-                out("❌ Deployment Guard: " + msg + " — failing (fail-closed). Set GUARD_FAIL_OPEN=true to tolerate API outages.")
+                out("❌ Deployment Guard: " + clean(msg) + " — failing (fail-closed). Set GUARD_FAIL_OPEN=true to tolerate API outages.")
                 sys.exit(1)
 
 
-            def clean(s, limit=4000):
-                # Steuerzeichen (ANSI, CR, ...) aus API-Text entfernen
-                s = "" if s is None else str(s)
-                return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", s)[:limit]
-
-
             def git(*args):
-                return subprocess.run(["git", "-c", "core.quotePath=false", *args], capture_output=True)
+                # Repo-.gitattributes ignorieren (leerer Attribut-Baum): attr.tree (git >= 2.42),
+                # GIT_ATTR_SOURCE (git >= 2.40) — sonst macht "* -diff" alle Zeilenzahlen zu 0
+                env = dict(os.environ, GIT_ATTR_SOURCE=EMPTY_TREE)
+                return subprocess.run(["git", "-c", "core.quotePath=false", "-c", "attr.tree=" + EMPTY_TREE, *args],
+                                      capture_output=True, env=env)
 
 
             def commit_exists(ref):
@@ -121,21 +153,37 @@ pipelines:
             except ValueError:
                 fatal("GUARD_HTTP_TIMEOUT must be a number (seconds)")
 
+            m = re.search(r"(\d+)\.(\d+)", git("version").stdout.decode(errors="replace"))
+            if not m or (int(m.group(1)), int(m.group(2))) < (2, 40):
+                out("[guard] WARNING: git < 2.40 — .gitattributes in the repo can hide diff lines. Use a newer git.")
+
             shallow = git("rev-parse", "--is-shallow-repository").stdout.decode().strip() == "true"
             HINT = "Use clone: depth: full on the step."
 
             # ── Diff-Basis ──
+            # GUARD_DIFF_BASE → CI_MERGE_REQUEST_DIFF_BASE_SHA (GitLab MR)
+            # → merge-base mit BITBUCKET_PR_DESTINATION_COMMIT (Bitbucket PR) → CI_COMMIT_BEFORE_SHA (GitLab Push) → HEAD~1
             base, source = "", ""
             if E("GUARD_DIFF_BASE"):
                 base, source = E("GUARD_DIFF_BASE"), "GUARD_DIFF_BASE"
                 if not commit_exists(base):
                     fatal("diff base not available in the clone: '%s' (%s). %s" % (base, source, HINT))
             else:
-                for name in ("CI_MERGE_REQUEST_DIFF_BASE_SHA", "CI_COMMIT_BEFORE_SHA"):
+                for name in ("CI_MERGE_REQUEST_DIFF_BASE_SHA", "BITBUCKET_PR_DESTINATION_COMMIT", "CI_COMMIT_BEFORE_SHA"):
                     v = E(name, "")
-                    if not is_sha(v):
+                    if name == "BITBUCKET_PR_DESTINATION_COMMIT":
+                        # Bitbucket liefert oft einen kurzen SHA (12 Zeichen)
+                        if not re.fullmatch(r"[0-9a-f]{7,40}", v) or re.fullmatch(r"0+", v):
+                            continue
+                        if commit_exists(v):
+                            r = git("merge-base", "HEAD", v)
+                            mb = r.stdout.decode(errors="replace").strip()
+                            if r.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}([0-9a-f]{24})?", mb):
+                                base, source = mb, "merge-base(HEAD, %s)" % name
+                                break
+                    elif not is_sha(v):
                         continue
-                    if commit_exists(v):
+                    elif commit_exists(v):
                         base, source = v, name
                         break
                     if shallow:
@@ -144,24 +192,30 @@ pipelines:
             if not base:
                 if commit_exists("HEAD~1"):
                     base, source = "HEAD~1", "HEAD~1"
+                    # Tag-Pipeline, neuer Branch, manueller Lauf: nur der letzte Commit wird bewertet
+                    out(FALLBACK_WARNING)
                 elif not shallow and commit_exists("HEAD"):
                     base, source = EMPTY_TREE, "initial commit (empty tree)"
                 else:
                     fatal("diff base not available in the clone: 'HEAD~1'. %s" % HINT)
 
             # ── Diff-Statistik ──
-            r = git("diff", "--numstat", base, "HEAD")
+            DIFF = ("diff", "--no-ext-diff", "--no-textconv")
+            r = git(*DIFF, "--numstat", base, "HEAD")
             if r.returncode != 0:
                 fatal("git diff --numstat %s..HEAD: %s" % (base, clean(r.stderr.decode(errors="replace"), 300)))
-            added = removed = 0
+            added = removed = binary = 0
             for line in r.stdout.decode(errors="replace").splitlines():
                 parts = line.split("\t")
                 if len(parts) >= 3:
+                    if parts[0] == "-" and parts[1] == "-":
+                        binary += 1   # echte Binärdatei: zählt als geänderte Datei, ohne Zeilen
+                        continue
                     added += int(parts[0]) if parts[0].isdigit() else 0
                     removed += int(parts[1]) if parts[1].isdigit() else 0
-            r = git("diff", "--name-only", "-z", base, "HEAD")
+            r = git(*DIFF, "--name-only", "-z", base, "HEAD")
             if r.returncode != 0:
-                fatal("git diff --name-only %s..HEAD fehlgeschlagen" % base)
+                fatal("git diff --name-only %s..HEAD failed" % base)
             names = [n.decode(errors="replace") for n in r.stdout.split(b"\0") if n]
 
             payload = {
@@ -183,9 +237,21 @@ pipelines:
             if EXTENDED:
                 summary += ", K8s: %d, Helm values: %d, Chart bump: %s" % (
                     payload["k8s_manifests_changed"], payload["helm_values_changed"], str(payload["helm_chart_bumped"]).lower())
-            out(summary)
+            out(clean(summary))
+            out("[guard] binary files changed: %d (no line counts, counted as changed files)" % binary)
+            gitattr = sum(1 for n in names if n.rsplit("/", 1)[-1] == ".gitattributes")
+            if gitattr:
+                out("[guard] WARNING: .gitattributes changed (%d) — repo attributes are ignored for the diff, please review this change." % gitattr)
+
 
             # ── API Call (Key nur im Header, nie auf der Kommandozeile) ──
+            class NoRedirect(urllib.request.HTTPRedirectHandler):
+                # Redirects nie verfolgen — der API Key darf nicht an ein Redirect-Ziel gehen
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    raise urllib.error.HTTPError(req.full_url, code, "redirect not followed", headers, fp)
+
+
+            opener = urllib.request.build_opener(NoRedirect)
             req = urllib.request.Request(
                 api_url + "/analyze",
                 data=json.dumps(payload).encode("utf-8"),
@@ -193,34 +259,44 @@ pipelines:
                 headers={"Content-Type": "application/json", "X-API-Key": E("GUARD_API_KEY", "")},
             )
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                with opener.open(req, timeout=timeout) as resp:
                     code, body = resp.status, resp.read()
             except urllib.error.HTTPError as e:
-                code, body = e.code, e.read()
+                code = e.code
+                try:
+                    body = e.read() or b""
+                except Exception:
+                    body = b""
             except Exception as e:  # Netzwerkfehler, Timeout, TLS
                 soft("API unreachable (%s)" % type(e).__name__)
 
+            # fail-open greift NUR bei 429 und 5xx — alle anderen Codes (3xx, 4xx) brechen immer ab
             if code in (401, 403):
                 out(clean(body.decode(errors="replace"), 500))
                 fatal("API key invalid or not authorized (HTTP %d)" % code)
             if code in (400, 422):
                 out(clean(body.decode(errors="replace"), 500))
                 fatal("request rejected — check the inputs (HTTP %d)" % code)
-            if code != 200:
+            if code == 429 or 500 <= code <= 599:
                 soft("API error (HTTP %d)" % code)
+            if 300 <= code <= 399:
+                fatal("API answered with a redirect (HTTP %d) — not followed, the key is never sent on. Check GUARD_API_URL. Fails regardless of GUARD_FAIL_OPEN." % code)
+            if code != 200:
+                out(clean(body.decode(errors="replace"), 500))
+                fatal("unexpected HTTP status %d — check GUARD_API_URL, proxy and plan. Fails regardless of GUARD_FAIL_OPEN." % code)
 
             try:
                 data = json.loads(body)
             except ValueError:
-                soft("invalid API response (no JSON)")
+                soft("invalid API response (%s)" % "no JSON")
             if not isinstance(data, dict):
-                soft("invalid API response (no object)")
+                soft("invalid API response (%s)" % "no object")
             status = data.get("status")
             score = data.get("score")
             if status not in ("PASS", "WARN", "BLOCKED"):
-                soft("invalid API response (status=%r)" % clean(status, 40))
+                soft("invalid API response (%s)" % ("status=%r" % clean(status, 40)))
             if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 100:
-                soft("invalid API response (score=%r)" % clean(score, 40))
+                soft("invalid API response (%s)" % ("score=%r" % clean(score, 40)))
             score = int(round(score))
             verdict = clean(data.get("verdict"), 60).replace("\n", " ").replace("\t", " ")
 

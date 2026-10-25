@@ -12,7 +12,8 @@
 #         name: Semgrep SAST
 #         image: semgrep/semgrep:1.92.0
 #         script:
-#           - semgrep scan --config=p/default --severity=WARNING --error
+#           # --severity is an exact filter (repeatable): WARNING and above = WARNING + ERROR
+#           - semgrep scan --config=p/default --severity=WARNING --severity=ERROR --error
 #
 # ───────────────────────────────────────────────────────────────
 # Customizable version
@@ -24,17 +25,25 @@
 #         name: Semgrep SAST
 #         image: semgrep/semgrep:1.92.0
 #         script:
-#           - semgrep scan
-#               --config=${SEMGREP_RULES:-p/default}
-#               --severity=${SEMGREP_SEVERITY:-WARNING}
-#               --json --output=semgrep-results.json
-#               --error
+#           - |
+#              # --severity is an exact filter: include higher levels (WARNING = WARNING + ERROR)
+#              case "${SEMGREP_SEVERITY:-WARNING}" in
+#                ERROR)   set -- --severity=ERROR ;;
+#                WARNING) set -- --severity=WARNING --severity=ERROR ;;
+#                INFO)    set -- --severity=INFO --severity=WARNING --severity=ERROR ;;
+#                *) echo "SEMGREP_SEVERITY must be ERROR, WARNING or INFO"; exit 1 ;;
+#              esac
+#              semgrep scan \
+#                --config="${SEMGREP_RULES:-p/default}" \
+#                "$@" \
+#                --json --output=semgrep-results.json \
+#                --error
 #         artifacts:
 #           - semgrep-results.json
 #
 # Variables (set in Repository Settings → Repository Variables):
 #   SEMGREP_RULES     — Default: p/default. Try: p/security-audit, p/owasp-top-ten, auto
-#   SEMGREP_SEVERITY  — Default: WARNING. Options: ERROR, WARNING, INFO
+#   SEMGREP_SEVERITY  — Minimum severity. Default: WARNING (= WARNING + ERROR). Options: ERROR, WARNING, INFO
 
 # Reference YAML for copy-paste:
 definitions:
@@ -44,9 +53,16 @@ definitions:
         image: semgrep/semgrep:1.92.0
         script:
           - |
+            # --severity is an exact filter: include higher levels (WARNING = WARNING + ERROR)
+            case "${SEMGREP_SEVERITY:-WARNING}" in
+              ERROR)   set -- --severity=ERROR ;;
+              WARNING) set -- --severity=WARNING --severity=ERROR ;;
+              INFO)    set -- --severity=INFO --severity=WARNING --severity=ERROR ;;
+              *) echo "SEMGREP_SEVERITY must be ERROR, WARNING or INFO"; exit 1 ;;
+            esac
             semgrep scan \
-              --config=${SEMGREP_RULES:-p/default} \
-              --severity=${SEMGREP_SEVERITY:-WARNING} \
+              --config="${SEMGREP_RULES:-p/default}" \
+              "$@" \
               --json --output=semgrep-results.json \
               --error
         artifacts:

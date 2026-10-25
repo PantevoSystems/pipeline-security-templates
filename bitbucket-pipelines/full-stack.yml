@@ -24,9 +24,16 @@ pipelines:
             image: semgrep/semgrep:1.92.0
             script:
               - |
+                # --severity is an exact filter: include higher levels (WARNING = WARNING + ERROR)
+                case "${SEMGREP_SEVERITY:-WARNING}" in
+                  ERROR)   set -- --severity=ERROR ;;
+                  WARNING) set -- --severity=WARNING --severity=ERROR ;;
+                  INFO)    set -- --severity=INFO --severity=WARNING --severity=ERROR ;;
+                  *) echo "SEMGREP_SEVERITY must be ERROR, WARNING or INFO"; exit 1 ;;
+                esac
                 semgrep scan \
-                  --config=${SEMGREP_RULES:-p/default} \
-                  --severity=${SEMGREP_SEVERITY:-WARNING} \
+                  --config="${SEMGREP_RULES:-p/default}" \
+                  "$@" \
                   --json --output=semgrep-results.json \
                   --error
             artifacts:
@@ -59,7 +66,15 @@ pipelines:
               name: Semgrep SAST (PR)
               image: semgrep/semgrep:1.92.0
               script:
-                - semgrep scan --config=${SEMGREP_RULES:-p/default} --severity=${SEMGREP_SEVERITY:-WARNING} --error
+                - |
+                  # --severity is an exact filter: include higher levels (WARNING = WARNING + ERROR)
+                  case "${SEMGREP_SEVERITY:-WARNING}" in
+                    ERROR)   set -- --severity=ERROR ;;
+                    WARNING) set -- --severity=WARNING --severity=ERROR ;;
+                    INFO)    set -- --severity=INFO --severity=WARNING --severity=ERROR ;;
+                    *) echo "SEMGREP_SEVERITY must be ERROR, WARNING or INFO"; exit 1 ;;
+                  esac
+                  semgrep scan --config="${SEMGREP_RULES:-p/default}" "$@" --error
 
           - step:
               name: Checkov IaC Scan (PR)

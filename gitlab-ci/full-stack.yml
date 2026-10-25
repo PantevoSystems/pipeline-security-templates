@@ -3,8 +3,8 @@
 #
 # Usage in your .gitlab-ci.yml:
 #
-#   include:   # pinned to release tag v1.2.4 (next release) — never main
-#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/full-stack.yml'
+#   include:   # pinned to release tag v1.2.5 (next release) — never main
+#     - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/full-stack.yml'
 #
 #   stages:
 #     - security
@@ -21,8 +21,8 @@
 #     extends: .checkov_template
 #     stage: security
 
-# Pinned to release tag v1.2.4 (next release) instead of main — the tag must exist before use.
+# Pinned to release tag v1.2.5 (next release) instead of main — the tag must exist before use.
 include:
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/trivy.yml'
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/semgrep.yml'
-  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.4/gitlab-ci/checkov.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/trivy.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/semgrep.yml'
+  - remote: 'https://raw.githubusercontent.com/PantevoSystems/pipeline-security-templates/v1.2.5/gitlab-ci/checkov.yml'
