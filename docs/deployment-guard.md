@@ -1,6 +1,6 @@
 # Deployment Guard Integration
 
-[Deployment Guard](https://www.pantevosystems.com/deployment-guard) by Pantevo Systems provides deterministic deployment risk scoring (0–100, with AI-generated explanations) on top of your existing security pipeline. It analyzes diff complexity, Kubernetes changes, dependency risk, and incident history to give you a single actionable score before every deployment.
+[Deployment Guard](https://www.pantevosystems.com/deployment-guard) by Pantevo Systems is a release gate for pull requests from people and AI agents, plus a deterministic risk score (0–100) on top of your existing security pipeline. This page covers the score integration: it analyzes diff complexity, Kubernetes changes, dependency risk, incident history and the findings from these templates. For the release gate (labels, required approvals, rules file) see the [action README](https://github.com/PantevoSystems/deployment-guard-action#release-gate-for-ai-generated-changes).
 
 ## Quick start
 
@@ -87,7 +87,7 @@ Thresholds (defaults: WARN at 50, BLOCK at 75) are configurable in the dashboard
 
 | Plan | Price | Analyses | Repos | History | Trial |
 |---|---|---|---|---|---|
-| Free | €0 | 30/month | 1 | 7 days | — |
+| Free | €0 | 100/month | 1 | 7 days | — |
 | Team | €39/month or €390/year | 500/month | 10 | 90 days | 14 days |
 
 The Team plan trial requires no credit card. After the trial ends, accounts auto-downgrade to Free unless a payment method is added.

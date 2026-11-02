@@ -67,9 +67,9 @@ Bitbucket doesn't support remote includes. Copy [`bitbucket-pipelines/full-stack
 
 ---
 
-## Bonus: deployment risk scoring
+## Bonus: release gate and risk score
 
-Want a single 0–100 risk score before every deployment? Try [Deployment Guard](https://www.pantevosystems.com/deployment-guard) — analyzes diff complexity, K8s changes, dependency risk, incident history, **and the security findings from these templates** (Trivy CVEs, Semgrep findings, Checkov failures). All factors flow into one deterministic score. **Free tier: 30 analyses/month, no credit card.**
+Want fixed rules for which pull request can merge without review, including those from Copilot, Claude or Cursor? Try [Deployment Guard](https://www.pantevosystems.com/deployment-guard): a release gate with labels and required approvals, plus a deterministic 0–100 risk score that includes **the security findings from these templates** (Trivy CVEs, Semgrep findings, Checkov failures). **Free plan: 100 analyses/month, no credit card.**
 
 ```yaml
 jobs:
@@ -97,7 +97,7 @@ Findings show up in your repo's Security tab **and** in the unified risk score. 
 
 These templates run in production on:
 
-- **[Deployment Guard](https://www.pantevosystems.com/deployment-guard)** — deterministic deployment risk scoring
+- **[Deployment Guard](https://www.pantevosystems.com/deployment-guard)** — release gate for pull requests and deterministic risk score
   Eats its own dogfood: every Deployment Guard release is scanned by these exact templates before deploy.
 - **[Pantevo Systems](https://www.pantevosystems.com)** — DevOps tools for teams of 5–50
 
